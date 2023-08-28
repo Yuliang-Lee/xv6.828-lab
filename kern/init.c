@@ -3,6 +3,7 @@
 #include <inc/stdio.h>
 #include <inc/string.h>
 #include <inc/assert.h>
+#include <inc/log.h>
 
 #include <kern/monitor.h>
 #include <kern/console.h>
@@ -11,6 +12,27 @@
 #include <kern/env.h>
 #include <kern/trap.h>
 
+
+void 
+rainbow(int stride)
+{
+	static const char msg[] = "rainbow!";
+	for (int i = 0; i < COLOR_NUM; ++i) {
+		set_fgcolor(i);
+		set_bgcolor((i + stride) % COLOR_NUM);
+		cprintf("%c", msg[i % (sizeof(msg) - 1)]);
+	}
+	reset_fgcolor();
+	reset_bgcolor();	
+	cprintf("\n");
+}
+
+void 
+test_rainbow()
+{
+	for(int i = 1; i < COLOR_NUM; ++i)
+		rainbow(i);
+}
 
 void
 i386_init(void)
@@ -40,7 +62,7 @@ i386_init(void)
 	ENV_CREATE(TEST, ENV_TYPE_USER);
 #else
 	// Touch all you want.
-	ENV_CREATE(user_hello, ENV_TYPE_USER);
+	ENV_CREATE(user_breakpoint, ENV_TYPE_USER);
 #endif // TEST*
 
 	// We only have one user environment for now, so just run it.

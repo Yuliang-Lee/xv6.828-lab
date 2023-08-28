@@ -1,6 +1,7 @@
 #include <inc/mmu.h>
 #include <inc/x86.h>
 #include <inc/assert.h>
+#include <inc/log.h>
 
 #include <kern/pmap.h>
 #include <kern/trap.h>
@@ -58,6 +59,23 @@ static const char *trapname(int trapno)
 	return "(unknown trap)";
 }
 
+#define TH(n) extern void handler##n (void);
+#define THE(n) TH(n)
+
+#include <kern/trapentry.inc>
+
+#undef THE
+#undef TH
+
+#define TH(n) [n] = handler##n,
+#define THE(n) TH(n)
+
+static void (* handlers[256])(void) = {
+#include <kern/trapentry.inc>
+};
+
+#undef THE
+#undef TH
 
 void
 trap_init(void)
@@ -65,7 +83,10 @@ trap_init(void)
 	extern struct Segdesc gdt[];
 
 	// LAB 3: Your code here.
-
+    for (int i = 0; i < 32; ++i) 
+        SETGATE(idt[i], 0, GD_KT, handlers[i], 0);
+    SETGATE(idt[T_BRKPT], 0, GD_KT, handlers[T_BRKPT], 3);
+    SETGATE(idt[T_SYSCALL], 0, GD_KT, handlers[T_SYSCALL], 3);
 	// Per-CPU setup 
 	trap_init_percpu();
 }
@@ -144,6 +165,32 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
+    switch(tf->tf_trapno) {
+    case T_PGFLT: {
+        page_fault_handler(tf);
+        return;
+    }
+	case T_DEBUG:
+    case T_BRKPT: {
+        monitor(tf);
+        return;
+    }
+    case T_SYSCALL: {
+        // eax, edx, ecx, ebx, edi, esi;
+        struct PushRegs *r = &tf->tf_regs;
+        r->reg_eax = syscall(
+            r->reg_eax, 
+            r->reg_edx, 
+            r->reg_ecx, 
+            r->reg_ebx, 
+            r->reg_edi, 
+            r->reg_esi
+        );
+        return;
+    }
+    default:
+        break;
+    }
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -205,6 +252,8 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
+    if ((tf->tf_cs & 3) == 0)
+        panic("page fault in kernel mode");
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
